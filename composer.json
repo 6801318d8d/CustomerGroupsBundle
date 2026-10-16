@@ -1,0 +1,25 @@
+{
+    "name": "6801318d8d/customer-groups-bundle",
+    "description": "Collapsible customer groups in Kimai's project lists, and select lists as tall as the window",
+    "homepage": "https://github.com/6801318d8d/CustomerGroupsBundle",
+    "type": "kimai-plugin",
+    "version": "1.0.0",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "6801318d8d",
+            "homepage": "https://github.com/6801318d8d"
+        }
+    ],
+    "extra": {
+        "kimai": {
+            "require": 20000,
+            "name": "Customer groups"
+        }
+    },
+    "autoload": {
+        "psr-4": {
+            "KimaiPlugin\\CustomerGroupsBundle\\": ""
+        }
+    }
+}
