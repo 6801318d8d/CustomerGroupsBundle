@@ -7,8 +7,9 @@ use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 
 /**
  * Turns the customer headers of the project lists into a tree: every customer starts closed and a click on it
- * opens or closes its projects; while searching, the customers with matching projects are open. Every select list
- * also grows down to the bottom of the window instead of TomSelect's fixed 200px.
+ * opens or closes its projects; while searching, the customers with matching projects are open. A list with the
+ * projects of one customer only (e.g. the form has a customer selected) shows them without the header. Every select
+ * list also grows down to the bottom of the window instead of TomSelect's fixed 200px.
  *
  * Kimai renders project selects with TomSelect, grouped by customer (ProjectType "group_by"), and has no setting for
  * either behaviour. TomSelect rebuilds the group elements on every render (opening, typing), so a MutationObserver
@@ -19,6 +20,7 @@ final class CustomerGroupsSubscriber implements EventSubscriberInterface
 {
     private const STYLE = <<<'HTML'
         <style>
+        .ts-dropdown.kcg-single .optgroup-header { display: none; }
         .ts-dropdown.kcg-projects .ts-dropdown-content { padding-top: 0; }
         .ts-dropdown.kcg-projects .optgroup::before { display: none; }
         .ts-dropdown.kcg-projects .optgroup-header.kcg-header {
@@ -108,6 +110,19 @@ final class CustomerGroupsSubscriber implements EventSubscriberInterface
                 return content.contains(option) && option.closest('.kcg-closed') === null;
             }
 
+            // counts the customers of all the projects in the list, not only of the ones matching the search
+            function countGroups(tomselect) {
+                const field = tomselect.settings.optgroupField;
+                const groups = new Set();
+                for (const option of Object.values(tomselect.options)) {
+                    if (option[field] !== undefined) {
+                        groups.add(option[field]);
+                    }
+                }
+
+                return groups.size;
+            }
+
             function applyGroups(content, tomselect) {
                 const state = getState(tomselect);
                 const query = tomselect.inputValue();
@@ -116,13 +131,18 @@ final class CustomerGroupsSubscriber implements EventSubscriberInterface
                     state.searchClosed.clear();
                 }
 
+                // the projects of one customer (e.g. the form has a customer selected) need no tree and no header
+                const single = countGroups(tomselect) < 2;
+                content.parentElement.classList.toggle('kcg-projects', !single);
+                content.parentElement.classList.toggle('kcg-single', single);
+
                 for (const group of content.querySelectorAll(':scope > .optgroup')) {
                     const header = group.querySelector(':scope > .optgroup-header');
                     if (header === null) {
                         continue;
                     }
                     const label = header.textContent;
-                    const open = query !== '' ? !state.searchClosed.has(label) : state.open.has(label);
+                    const open = single || (query !== '' ? !state.searchClosed.has(label) : state.open.has(label));
                     const options = group.querySelectorAll(':scope > .option');
                     header.classList.add('kcg-header');
                     header.dataset.count = options.length;
@@ -221,7 +241,6 @@ final class CustomerGroupsSubscriber implements EventSubscriberInterface
                     for (const content of contents) {
                         const tomselect = getTomSelect(content);
                         if (tomselect !== null && isProjectSelect(tomselect)) {
-                            content.parentElement.classList.add('kcg-projects');
                             applyGroups(content, tomselect);
                         }
                     }

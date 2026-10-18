@@ -7,7 +7,9 @@ collapsible tree:
 - every customer starts closed when the list opens, showing its name, a chevron and the number of its projects;
 - a click on a customer opens or closes its projects;
 - while you type, the customers with matching projects open by themselves;
-- the keyboard (arrows, Enter) skips the projects of closed customers.
+- the keyboard (arrows, Enter) skips the projects of closed customers;
+- a list with the projects of one customer only (for example when the form already has a customer selected) shows
+  them without the customer header.
 
 Every select list (projects, activities, customers, users, tags...) also grows down to the bottom of the window,
 instead of Kimai's fixed height of about six rows.
@@ -58,6 +60,7 @@ the lists fall back to Kimai's own behaviour; please open an issue.
 
 ## Changes
 
+- 1.0.1: no customer header when the list holds the projects of one customer only.
 - 1.0.0: first public version.
 
 ## License
