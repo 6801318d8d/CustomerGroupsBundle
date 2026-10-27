@@ -16,6 +16,13 @@ instead of Kimai's fixed height of about six rows.
 
 ![Project list with collapsed customers](screenshots/project-list.webp)
 
+## Touch screens
+
+On a phone or tablet, tapping a select list in Kimai puts the cursor in its search box, so the on-screen keyboard
+opens and covers half of the list. With the plugin, a tap with the finger opens the list without the keyboard: scroll
+and tap a choice. To search by typing, tap the select again while its list is open, and the keyboard comes up. The
+next time the list opens, it is again without the keyboard. Mouse and pen work as before.
+
 ## Requirements
 
 Kimai 2. Tested with 2.69.0.
@@ -53,13 +60,17 @@ Kimai renders its select lists with TomSelect and groups the projects by custome
 a logged-in user. The script marks the dropdowns of project fields (ids ending in `_project`, or `projects`),
 turns their group headers into toggles and hides the options of closed groups. TomSelect rebuilds the groups on
 every render (opening, typing), so a `MutationObserver` applies the open/closed state again after each one.
-Nothing is stored and no Kimai file is changed.
+On a touch tap (`pointerType` "touch") on a closed list, the search box gets `inputmode="none"`, which keeps the
+on-screen keyboard down; a touch tap on the open list sets `inputmode="text"` and gives the box the focus again, which
+brings the keyboard up. Nothing is stored and no Kimai file is changed.
 
 It relies on Kimai's frontend markup, which is not a public API: a future Kimai version may break it. In that case
 the lists fall back to Kimai's own behaviour; please open an issue.
 
 ## Changes
 
+- 1.1.0: on touch screens the lists open without the on-screen keyboard; a second tap on the open list brings it
+  up to search.
 - 1.0.1: no customer header when the list holds the projects of one customer only.
 - 1.0.0: first public version.
 

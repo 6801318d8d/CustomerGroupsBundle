@@ -9,7 +9,8 @@ use Symfony\Component\EventDispatcher\EventSubscriberInterface;
  * Turns the customer headers of the project lists into a tree: every customer starts closed and a click on it
  * opens or closes its projects; while searching, the customers with matching projects are open. A list with the
  * projects of one customer only (e.g. the form has a customer selected) shows them without the header. Every select
- * list also grows down to the bottom of the window instead of TomSelect's fixed 200px.
+ * list also grows down to the bottom of the window instead of TomSelect's fixed 200px, and on touch screens opens
+ * without the keyboard (a second tap on the open select brings it up to search).
  *
  * Kimai renders project selects with TomSelect, grouped by customer (ProjectType "group_by"), and has no setting for
  * either behaviour. TomSelect rebuilds the group elements on every render (opening, typing), so a MutationObserver
@@ -218,8 +219,42 @@ final class CustomerGroupsSubscriber implements EventSubscriberInterface
                 }
             }
 
+            // touch screens: TomSelect puts the cursor in its search box at once, and the phone's keyboard then covers
+            // half of the list. With a finger, a tap opens the list without the keyboard (inputmode "none"); a tap on
+            // the select while its list is open brings the keyboard up to type a search. Mouse and pen are untouched.
+            function touchWithoutKeyboard() {
+                let typing = null;
+                document.addEventListener('pointerdown', function (event) {
+                    if (event.pointerType !== 'touch' || !(event.target instanceof Element)) {
+                        return;
+                    }
+                    const wrapper = event.target.closest('.ts-wrapper');
+                    const input = wrapper !== null ? wrapper.querySelector('.ts-control input') : null;
+                    if (input === null) {
+                        return;
+                    }
+                    if (!wrapper.classList.contains('dropdown-active')) {
+                        input.inputMode = 'none';
+                    } else if (document.activeElement === input && input.inputMode === 'none') {
+                        typing = input;
+                    }
+                }, true);
+                // the keyboard only shows when the box gets the focus: take it away and give it back, during the tap
+                document.addEventListener('click', function () {
+                    if (typing === null) {
+                        return;
+                    }
+                    const input = typing;
+                    typing = null;
+                    input.blur();
+                    input.inputMode = 'text';
+                    input.focus();
+                }, true);
+            }
+
             function init() {
                 window.addEventListener('mousedown', toggleGroup, true);
+                touchWithoutKeyboard();
 
                 const observer = new MutationObserver(function (mutations) {
                     const dropdowns = new Set();
