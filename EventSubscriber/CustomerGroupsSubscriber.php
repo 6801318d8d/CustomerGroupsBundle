@@ -10,7 +10,10 @@ use Symfony\Component\EventDispatcher\EventSubscriberInterface;
  * opens or closes its projects; while searching, the customers with matching projects are open. A list with the
  * projects of one customer only (e.g. the form has a customer selected) shows them without the header. Every select
  * list also grows down to the bottom of the window instead of TomSelect's fixed 200px, and on touch screens opens
- * without the keyboard (a second tap on the open select brings it up to search).
+ * without the keyboard (a second tap on the open select brings it up to search). On phones the popups with the forms
+ * take the whole width of the screen: Bootstrap keeps a margin around them, and on touch screens the popup's own
+ * scrollbar goes (Tabler styles scrollbars 1rem wide with ::-webkit-scrollbar, so on Android the popup kept a strip
+ * on the right; the page's scrollbar is Android's, drawn over it).
  *
  * Kimai renders project selects with TomSelect, grouped by customer (ProjectType "group_by"), and has no setting for
  * either behaviour. TomSelect rebuilds the group elements on every render (opening, typing), so a MutationObserver
@@ -67,6 +70,15 @@ final class CustomerGroupsSubscriber implements EventSubscriberInterface
             background-position: 1.15rem 0;
             background-repeat: no-repeat;
             background-size: 1px 100%;
+        }
+        @media (max-width: 575.98px) {
+            .modal { padding-left: 0 !important; padding-right: 0 !important; }
+            .modal-dialog { margin: 0; max-width: none; }
+            .modal-content { border-left: 0; border-right: 0; border-radius: 0; }
+        }
+        /* the popup scrolls itself, and Tabler's ::-webkit-scrollbar is 1rem wide and takes room: none on touch screens */
+        @media (pointer: coarse) {
+            .modal::-webkit-scrollbar { width: 0; height: 0; }
         }
         </style>
         HTML;

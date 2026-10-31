@@ -23,6 +23,10 @@ opens and covers half of the list. With the plugin, a tap with the finger opens 
 and tap a choice. To search by typing, tap the select again while its list is open, and the keyboard comes up. The
 next time the list opens, it is again without the keyboard. Mouse and pen work as before.
 
+On phones the popups with the forms (start a timer, edit an entry...) take the whole width of the screen: Kimai keeps
+a margin around them, and on Android also a 1rem strip on the right for the popup's scrollbar. On touch screens the
+popup has no scrollbar; it scrolls with the finger as before.
+
 ## Requirements
 
 Kimai 2. Tested with 2.69.0.
