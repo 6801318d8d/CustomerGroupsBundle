@@ -16,6 +16,16 @@ instead of Kimai's fixed height of about six rows.
 
 ![Project list with collapsed customers](screenshots/project-list.webp)
 
+## Default project
+
+In the timesheet forms (start a timer, create or edit an entry), choosing a customer also selects a project:
+
+- the only project of that customer (Kimai already does this by itself);
+- otherwise the project of your latest entry for that customer, if that project is still in the list.
+
+Then Kimai loads the activities of that project as usual. A project you pick yourself while the list is loading is
+kept, and a customer without entries leaves the project empty.
+
 ## Touch screens
 
 On a phone or tablet, tapping a select list in Kimai puts the cursor in its search box, so the on-screen keyboard
@@ -66,13 +76,18 @@ turns their group headers into toggles and hides the options of closed groups. T
 every render (opening, typing), so a `MutationObserver` applies the open/closed state again after each one.
 On a touch tap (`pointerType` "touch") on a closed list, the search box gets `inputmode="none"`, which keeps the
 on-screen keyboard down; a touch tap on the open list sets `inputmode="text"` and gives the box the focus again, which
-brings the keyboard up. Nothing is stored and no Kimai file is changed.
+brings the keyboard up. For the default project, the script waits until Kimai has loaded the projects of the chosen
+customer (event `data-reloaded` of the project select) and, if none is selected, reads your latest entry for that
+customer through Kimai's API (`GET /api/timesheets?customers[]=<id>&size=1`, with the session of the page). Nothing is
+stored and no Kimai file is changed.
 
 It relies on Kimai's frontend markup, which is not a public API: a future Kimai version may break it. In that case
 the lists fall back to Kimai's own behaviour; please open an issue.
 
 ## Changes
 
+- 1.3.0: in the timesheet forms, choosing a customer selects the project of your latest entry for that customer.
+- 1.2.0: on phones the popups with the forms take the whole width of the screen, without a scrollbar strip.
 - 1.1.0: on touch screens the lists open without the on-screen keyboard; a second tap on the open list brings it
   up to search.
 - 1.0.1: no customer header when the list holds the projects of one customer only.

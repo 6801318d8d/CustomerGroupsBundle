@@ -4,6 +4,7 @@ namespace KimaiPlugin\CustomerGroupsBundle\EventSubscriber;
 
 use App\Event\ThemeEvent;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
+use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 
 /**
  * Turns the customer headers of the project lists into a tree: every customer starts closed and a click on it
@@ -14,6 +15,10 @@ use Symfony\Component\EventDispatcher\EventSubscriberInterface;
  * take the whole width of the screen: Bootstrap keeps a margin around them, and on touch screens the popup's own
  * scrollbar goes (Tabler styles scrollbars 1rem wide with ::-webkit-scrollbar, so on Android the popup kept a strip
  * on the right; the page's scrollbar is Android's, drawn over it).
+ *
+ * In the timesheet forms, choosing a customer also selects a project: the only one of that customer (Kimai does this
+ * itself), otherwise the project of the user's latest entry for that customer (API "get_timesheets", one entry), if it
+ * is in the list; a project chosen in the meantime is kept.
  *
  * Kimai renders project selects with TomSelect, grouped by customer (ProjectType "group_by"), and has no setting for
  * either behaviour. TomSelect rebuilds the group elements on every render (opening, typing), so a MutationObserver
@@ -86,6 +91,7 @@ final class CustomerGroupsSubscriber implements EventSubscriberInterface
     private const SCRIPT = <<<'HTML'
         <script>
         (function () {
+            const TIMESHEETS_URL = __CUSTOMER_GROUPS_TIMESHEETS_URL__;
             const SUFFIX = '-ts-dropdown';
             const states = new WeakMap();
 
@@ -264,9 +270,91 @@ final class CustomerGroupsSubscriber implements EventSubscriberInterface
                 }, true);
             }
 
+            // Kimai's API client, with the session of the page
+            let api = null;
+            document.addEventListener('kimai.initialized', function (event) {
+                try {
+                    api = event.detail.kimai.getPlugin('api');
+                } catch (error) {
+                    console.warn('CustomerGroupsBundle: no API client, no default project', error);
+                }
+            });
+
+            // runs "callback" once the select that "select" reloads (e.g. the activities of a project) is not loading:
+            // Kimai ignores a new change while that list is still loading
+            function whenRelatedIdle(select, callback) {
+                const related = select.dataset.relatedSelect ? document.getElementById(select.dataset.relatedSelect) : null;
+                if (related === null || related.dataset.reloading !== '1') {
+                    callback();
+                    return;
+                }
+                // "data-reloaded" fires before Kimai marks the list as loaded
+                related.addEventListener('data-reloaded', function () { setTimeout(callback, 0); }, {once: true});
+            }
+
+            // Timesheet forms: when a customer is chosen, Kimai loads its projects and selects one only if it is the
+            // only one. Otherwise select the project of the user's latest entry for that customer, if it is in the list.
+            // A project chosen in the meantime, or another customer, wins.
+            function defaultProject() {
+                // "data-reloaded" does not bubble: listen while it goes down to the select
+                document.addEventListener('data-reloaded', function (event) {
+                    const project = event.target;
+                    if (!(project instanceof HTMLSelectElement) || project.multiple || project.id === '') {
+                        return;
+                    }
+                    const customer = document.querySelector('select[data-related-select="' + CSS.escape(project.id) + '"]');
+                    if (customer === null || customer.multiple || !/^timesheet_\w*\[customer\]$/.test(customer.name) || customer.value === '') {
+                        return;
+                    }
+                    const values = [...project.options].map(option => option.value).filter(value => value !== '');
+                    const customerId = customer.value;
+                    const pick = function (value) {
+                        if (customer.value !== customerId || project.value !== '' || !values.includes(value)) {
+                            return;
+                        }
+                        whenRelatedIdle(project, function () {
+                            if (customer.value !== customerId || project.value !== '') {
+                                return;
+                            }
+                            if (project.tomselect !== undefined) {
+                                // also triggers "change", so that Kimai loads the activities of the project
+                                project.tomselect.setValue(value);
+                            } else {
+                                project.value = value;
+                                project.dispatchEvent(new Event('change', {bubbles: true}));
+                            }
+                        });
+                    };
+                    // Kimai sets the value before this event and triggers "change" after it: decide afterwards
+                    setTimeout(function () {
+                        if (project.value !== '' || values.length === 0) {
+                            return;
+                        }
+                        if (values.length === 1) {
+                            pick(values[0]);
+                            return;
+                        }
+                        if (api === null) {
+                            return;
+                        }
+                        const query = {'customers[]': customerId, size: 1, orderBy: 'begin', order: 'DESC'};
+                        api.get(TIMESHEETS_URL, query, function (timesheets) {
+                            const latest = Array.isArray(timesheets) && timesheets.length > 0 ? timesheets[0] : null;
+                            const id = latest !== null ? latest.project : null;
+                            if (id !== null && id !== undefined) {
+                                pick(String(typeof id === 'object' ? id.id : id));
+                            }
+                        }, function (error) {
+                            console.warn('CustomerGroupsBundle: cannot read the latest entry', error);
+                        });
+                    }, 0);
+                }, true);
+            }
+
             function init() {
                 window.addEventListener('mousedown', toggleGroup, true);
                 touchWithoutKeyboard();
+                defaultProject();
 
                 const observer = new MutationObserver(function (mutations) {
                     const dropdowns = new Set();
@@ -305,6 +393,10 @@ final class CustomerGroupsSubscriber implements EventSubscriberInterface
         </script>
         HTML;
 
+    public function __construct(private readonly UrlGeneratorInterface $router)
+    {
+    }
+
     public static function getSubscribedEvents(): array
     {
         return [
@@ -324,7 +416,8 @@ final class CustomerGroupsSubscriber implements EventSubscriberInterface
     public function onJavascript(ThemeEvent $event): void
     {
         if ($event->getUser() !== null) {
-            $event->addContent(self::SCRIPT);
+            $url = json_encode($this->router->generate('get_timesheets'), JSON_THROW_ON_ERROR | JSON_HEX_TAG | JSON_UNESCAPED_SLASHES);
+            $event->addContent(str_replace('__CUSTOMER_GROUPS_TIMESHEETS_URL__', $url, self::SCRIPT));
         }
     }
 }
