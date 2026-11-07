@@ -18,7 +18,8 @@ use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
  *
  * In the timesheet forms, choosing a customer also selects a project: the only one of that customer (Kimai does this
  * itself), otherwise the project of the user's latest entry for that customer (API "get_timesheets", one entry), if it
- * is in the list; a project chosen in the meantime is kept.
+ * is in the list; a project chosen in the meantime is kept. The other way round, choosing a project fills in its
+ * customer, without reloading the project list.
  *
  * Kimai renders project selects with TomSelect, grouped by customer (ProjectType "group_by"), and has no setting for
  * either behaviour. TomSelect rebuilds the group elements on every render (opening, typing), so a MutationObserver
@@ -351,10 +352,60 @@ final class CustomerGroupsSubscriber implements EventSubscriberInterface
                 }, true);
             }
 
+            // Timesheet forms: choosing a project also fills in its customer, which Kimai leaves as it is (there the
+            // customer only filters the projects). The customer is set without "change", so Kimai does not reload the
+            // projects: the list keeps the projects of every customer, and the chosen one stays selected.
+            function customerOfProject() {
+                document.addEventListener('change', function (event) {
+                    const project = event.target;
+                    if (!(project instanceof HTMLSelectElement) || project.multiple || project.id === '' || project.value === '') {
+                        return;
+                    }
+                    // only a project chosen in the list: while Kimai reloads the projects (e.g. the customer was
+                    // cleared by hand) it selects the previous one again, and the customer must stay as it is
+                    if (project.dataset.reloading === '1') {
+                        return;
+                    }
+                    const customer = document.querySelector('select[data-related-select="' + CSS.escape(project.id) + '"]');
+                    if (customer === null || customer.multiple || !/^timesheet_\w*\[customer\]$/.test(customer.name)) {
+                        return;
+                    }
+                    const option = project.selectedOptions[0];
+                    if (option === undefined) {
+                        return;
+                    }
+                    const customers = [...customer.options].filter(item => item.value !== '');
+                    // Kimai's own options carry the customer id; the ones it loads from its API only belong to a group
+                    // labelled like the customer in the customer list. TomSelect may move the selected option out of
+                    // its <optgroup>, but keeps the group in its own list of options.
+                    let match = customers.find(item => item.value === option.dataset.customer);
+                    if (match === undefined && option.dataset.customer === undefined) {
+                        let label = option.parentElement instanceof HTMLOptGroupElement ? option.parentElement.label : null;
+                        const tomselect = project.tomselect;
+                        const data = tomselect !== undefined ? tomselect.options[project.value] : undefined;
+                        if (data !== undefined) {
+                            const group = tomselect.optgroups[data[tomselect.settings.optgroupField]];
+                            label = group !== undefined ? group[tomselect.settings.optgroupLabelField] : label;
+                        }
+                        const named = customers.filter(item => item.text === label);
+                        match = named.length === 1 ? named[0] : undefined;
+                    }
+                    if (match === undefined || customer.value === match.value) {
+                        return;
+                    }
+                    if (customer.tomselect !== undefined) {
+                        customer.tomselect.setValue(match.value, true);
+                    } else {
+                        customer.value = match.value;
+                    }
+                });
+            }
+
             function init() {
                 window.addEventListener('mousedown', toggleGroup, true);
                 touchWithoutKeyboard();
                 defaultProject();
+                customerOfProject();
 
                 const observer = new MutationObserver(function (mutations) {
                     const dropdowns = new Set();

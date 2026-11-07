@@ -3,7 +3,7 @@
     "description": "Collapsible customer groups in Kimai's project lists, select lists as tall as the window, no keyboard on touch",
     "homepage": "https://github.com/6801318d8d/CustomerGroupsBundle",
     "type": "kimai-plugin",
-    "version": "1.3.0",
+    "version": "1.4.0",
     "license": "MIT",
     "authors": [
         {
