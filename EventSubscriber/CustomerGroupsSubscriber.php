@@ -19,7 +19,9 @@ use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
  * In the timesheet forms, choosing a customer also selects a project: the only one of that customer (Kimai does this
  * itself), otherwise the project of the user's latest entry for that customer (API "get_timesheets", one entry), if it
  * is in the list; a project chosen in the meantime is kept. The other way round, choosing a project fills in its
- * customer, without reloading the project list.
+ * customer, without reloading the project list. Choosing a project also selects the activity of the user's latest
+ * entry for that project, when Kimai selects none; until a project is chosen the activity list is empty and disabled
+ * (Kimai lists the global activities there, but cannot save an entry without a project).
  *
  * Kimai renders project selects with TomSelect, grouped by customer (ProjectType "group_by"), and has no setting for
  * either behaviour. TomSelect rebuilds the group elements on every render (opening, typing), so a MutationObserver
@@ -401,15 +403,146 @@ final class CustomerGroupsSubscriber implements EventSubscriberInterface
                 });
             }
 
+            function isRequired(select) {
+                return select.required || (select.tomselect !== undefined && select.tomselect.isRequired === true);
+            }
+
+            // Timesheet forms: the project select that loads the activities of "activity", when both are required
+            // (the multi-update form, where both may stay empty to keep the entries as they are, is left alone)
+            function projectOfActivity(activity) {
+                if (!(activity instanceof HTMLSelectElement) || activity.multiple || activity.id === ''
+                    || !/^timesheet_\w*\[activity\]$/.test(activity.name)) {
+                    return null;
+                }
+                const project = document.querySelector('select[data-related-select="' + CSS.escape(activity.id) + '"]');
+                if (project === null || project.multiple || !/^timesheet_\w*\[project\]$/.test(project.name)
+                    || !isRequired(project) || !isRequired(activity)) {
+                    return null;
+                }
+
+                return project;
+            }
+
+            // Without a project Kimai lists the global activities (e.g. "General"), but an entry cannot be saved
+            // without a project: the activity stays empty and disabled until a project is chosen. Kimai enables the
+            // list again when it loads the activities of the project.
+            function lockActivity(activity, project) {
+                if (project.value !== '' || activity.tomselect === undefined || activity.dataset.reloading === '1') {
+                    return;
+                }
+                if (activity.value !== '') {
+                    activity.tomselect.clear(true);
+                }
+                if (!activity.tomselect.isDisabled) {
+                    activity.tomselect.disable();
+                }
+                activity.disabled = true;
+            }
+
+            // the forms just shown (page or popup) whose project is still empty
+            function lockActivities() {
+                for (const activity of document.querySelectorAll('select[name^="timesheet_"][name$="[activity]"]')) {
+                    const project = projectOfActivity(activity);
+                    if (project !== null) {
+                        lockActivity(activity, project);
+                    }
+                }
+            }
+
+            // Timesheet forms: when Kimai has loaded the activities of the chosen project and selected none (it does
+            // only when the project has a single activity, or keeps the previous one if it is in the new list), select
+            // the activity of the user's latest entry for that project, if it is in the list. An activity chosen by the
+            // user wins; one selected here follows the project: replaced by the latest of the new project, or cleared.
+            const autoActivities = new WeakMap();
+            let settingActivity = false;
+
+            function setActivity(activity, value) {
+                settingActivity = true;
+                try {
+                    if (activity.tomselect === undefined) {
+                        activity.value = value;
+                        activity.dispatchEvent(new Event('change', {bubbles: true}));
+                    } else if (value === '') {
+                        activity.tomselect.clear();
+                    } else {
+                        activity.tomselect.setValue(value);
+                    }
+                } finally {
+                    settingActivity = false;
+                }
+            }
+
+            function defaultActivity() {
+                // a change outside Kimai's reloads and this script is the user's choice
+                document.addEventListener('change', function (event) {
+                    const activity = event.target;
+                    if (!settingActivity && autoActivities.has(activity) && activity.dataset.reloading !== '1') {
+                        autoActivities.delete(activity);
+                    }
+                }, true);
+
+                // "data-reloaded" does not bubble: listen while it goes down to the select
+                document.addEventListener('data-reloaded', function (event) {
+                    const activity = event.target;
+                    const project = projectOfActivity(activity);
+                    if (project === null) {
+                        return;
+                    }
+                    // Kimai sets the value before this event, and enables the list after it
+                    setTimeout(function () {
+                        const projectId = project.value;
+                        if (projectId === '') {
+                            lockActivity(activity, project);
+                            return;
+                        }
+                        const current = activity.value;
+                        const auto = current !== '' && autoActivities.get(activity) === current;
+                        if ((current !== '' && !auto) || api === null) {
+                            return;
+                        }
+                        const query = {'projects[]': projectId, size: 1, orderBy: 'begin', order: 'DESC'};
+                        api.get(TIMESHEETS_URL, query, function (timesheets) {
+                            // another project, another reload or a choice of the user in the meantime
+                            if (project.value !== projectId || activity.value !== current || activity.dataset.reloading === '1'
+                                || (auto && autoActivities.get(activity) !== current)) {
+                                return;
+                            }
+                            const latest = Array.isArray(timesheets) && timesheets.length > 0 ? timesheets[0] : null;
+                            const id = latest !== null ? latest.activity : null;
+                            let value = id === null || id === undefined ? '' : String(typeof id === 'object' ? id.id : id);
+                            if (value !== '' && ![...activity.options].some(option => option.value === value)) {
+                                value = '';
+                            }
+                            // no previous activity for this project: one selected here for another project goes
+                            if (value === '') {
+                                if (auto) {
+                                    autoActivities.delete(activity);
+                                    setActivity(activity, '');
+                                }
+                                return;
+                            }
+                            if (value !== current) {
+                                setActivity(activity, value);
+                            }
+                            autoActivities.set(activity, value);
+                        }, function (error) {
+                            console.warn('CustomerGroupsBundle: cannot read the latest entry', error);
+                        });
+                    }, 0);
+                }, true);
+            }
+
             function init() {
                 window.addEventListener('mousedown', toggleGroup, true);
                 touchWithoutKeyboard();
                 defaultProject();
                 customerOfProject();
+                defaultActivity();
 
                 const observer = new MutationObserver(function (mutations) {
                     const dropdowns = new Set();
                     const contents = new Set();
+                    let newSelects = false;
                     for (const mutation of mutations) {
                         const target = mutation.target;
                         if (target.nodeType !== Node.ELEMENT_NODE) {
@@ -420,9 +553,21 @@ final class CustomerGroupsSubscriber implements EventSubscriberInterface
                             if (target.classList.contains('ts-dropdown')) {
                                 dropdowns.add(target);
                             }
-                        } else if (target.classList.contains('ts-dropdown-content')) {
+                            continue;
+                        }
+                        if (target.classList.contains('ts-dropdown-content')) {
                             contents.add(target);
                         }
+                        // TomSelect puts its box after each select it takes over: a form was shown
+                        for (const node of mutation.addedNodes) {
+                            if (node.nodeType === Node.ELEMENT_NODE
+                                && (node.classList.contains('ts-wrapper') || node.querySelector('.ts-wrapper') !== null)) {
+                                newSelects = true;
+                            }
+                        }
+                    }
+                    if (newSelects) {
+                        lockActivities();
                     }
                     for (const content of contents) {
                         const tomselect = getTomSelect(content);

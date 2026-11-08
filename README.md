@@ -16,7 +16,7 @@ instead of Kimai's fixed height of about six rows.
 
 ![Project list with collapsed customers](screenshots/project-list.webp)
 
-## Default project
+## Default project and activity
 
 In the timesheet forms (start a timer, create or edit an entry), choosing a customer also selects a project:
 
@@ -28,7 +28,23 @@ kept, and a customer without entries leaves the project empty.
 
 The other way round, choosing a project fills in its customer, which Kimai leaves empty. The project list is not
 reloaded: it still shows the projects of every customer, so you can switch to a project of another customer, and the
-customer follows. A customer you clear by hand stays empty until you choose a project again.
+customer follows.
+
+Choosing a project also selects an activity when Kimai selects none (Kimai does only when the project has a single
+activity, and keeps the previous one if it is still in the list): the activity of your latest entry for that project,
+if it is in the list. An activity you pick yourself is kept; one picked by the plugin follows the project: it becomes
+the activity of your latest entry for the new project, or none if you have no entry there.
+
+Until a project is chosen, the activity list is empty and disabled. Kimai lists the global activities there, but it
+cannot save an entry without a project.
+
+## Required customer
+
+In the timesheet forms of the web pages the customer is required, like the project: its label has the asterisk, its
+list has no empty choice, and a form sent without customer gets the error "This value should not be blank.". Kimai
+treats the customer as an optional filter of the project list: the field is not saved, an entry takes the customer of
+its project. Since choosing a project fills in its customer, nothing changes when you start from the project. The API
+(used by the apps) is not changed.
 
 ## Touch screens
 
@@ -85,13 +101,20 @@ customer (event `data-reloaded` of the project select) and, if none is selected,
 customer through Kimai's API (`GET /api/timesheets?customers[]=<id>&size=1`, with the session of the page). For the
 customer of a project, it reads the `data-customer` attribute of the project option (or, for the options Kimai loads
 from its API, the customer group the option is in) and sets the customer select without a `change` event, so that
-Kimai does not reload the projects. Nothing is stored and no Kimai file is changed.
+Kimai does not reload the projects. For the default activity, it waits until Kimai has loaded the activities of the
+project (event `data-reloaded` of the activity select) and reads your latest entry for that project
+(`GET /api/timesheets?projects[]=<id>&size=1`); with no project it clears and disables the activity select. The
+required customer is a form type extension of Kimai's timesheet forms (`TimesheetEditForm`, `TimesheetAdminEditForm`,
+`TimesheetMultiUserEditForm`): it marks the customer field as required in the page and adds an error when the form
+arrives without customer. Nothing is stored and no Kimai file is changed.
 
 It relies on Kimai's frontend markup, which is not a public API: a future Kimai version may break it. In that case
 the lists fall back to Kimai's own behaviour; please open an issue.
 
 ## Changes
 
+- 1.5.0: in the timesheet forms, choosing a project selects the activity of your latest entry for that project; the
+  activity list stays disabled until a project is chosen; the customer is required.
 - 1.4.0: in the timesheet forms, choosing a project fills in its customer.
 - 1.3.0: in the timesheet forms, choosing a customer selects the project of your latest entry for that customer.
 - 1.2.0: on phones the popups with the forms take the whole width of the screen, without a scrollbar strip.

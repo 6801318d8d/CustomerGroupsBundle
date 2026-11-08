@@ -6,3 +6,6 @@ services:
 
     KimaiPlugin\CustomerGroupsBundle\EventSubscriber\:
         resource: '../../EventSubscriber/'
+
+    KimaiPlugin\CustomerGroupsBundle\Form\:
+        resource: '../../Form/'
